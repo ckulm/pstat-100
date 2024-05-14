@@ -1,0 +1,481 @@
+---
+title: "Mini Project 2"
+author:
+- Carter Kulm (carterkulm)
+- Collaborated with Brooks Piper (brookspiper)
+date: "05/8/2024"
+format: pdf
+fontsize: 12pt
+number-sections: TRUE
+linkcolor: purple
+geometry:
+  - margin=1in
+toc: TRUE
+---
+
+```{r setup, echo = F}
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r, echo = F}
+## optional code chunk;
+## gives shortcut for boldface colored text,
+## able to be rendered in both PDF and HTML
+
+bfcolor <- function(x, color) {
+  if (knitr::is_latex_output()) {
+    sprintf("\\textcolor{%s}{\\textbf{%s}}", color, x)
+  } else if (knitr::is_html_output()) {
+    sprintf("<span style='color: %s;'><b>%s</b></span>", color, x)
+  } else x
+}
+```
+
+```{r, message = F, warning = F, echo = F}
+library(ottr)        # for checking test cases (i.e. autograding)
+library(pander)      # for nicer-looking formatting of dataframe outputs
+library(reshape2)    # for 'melting' data frames
+library(tidyverse)  # for graphs, data wrangling, etc.
+library(ggpubr)
+library(kableExtra)
+```
+
+```{r loading in data}
+basics <- read.csv("~/Desktop/PSTAT 100/Mini Projects/MP02/data-2/basics.csv")
+ratings <- read.csv("~/Desktop/PSTAT 100/Mini Projects/MP02/data-2/ratings.csv")
+```
+
+```{r unnesting genres column}
+basics <- basics %>%
+  mutate(genres = strsplit(as.character(genres), ",")) %>%
+  unnest(genres)
+```
+
+# Is there a difference between average ratings across different genres?
+
+```{r creating datasets to compare avg ratings across genres}
+avg_ratings_genres <- full_join(
+  basics,
+  ratings,
+  by = join_by(tconst == tconst)
+) %>%
+  select(
+    genres, averageRating
+  ) %>%
+  filter(
+    genres != "\\N"
+  ) %>%
+  group_by (
+    genres
+  )
+action_avg <- avg_ratings_genres %>%
+  filter(
+    genres == "Action"
+  )
+comedy_avg <- avg_ratings_genres %>%
+  filter(
+    genres == "Comedy"
+  )
+drama_avg <- avg_ratings_genres %>%
+  filter(
+    genres == "Drama"
+  )
+romance_avg <- avg_ratings_genres %>%
+  filter(
+    genres == "Romance"
+  )
+```
+
+```{r warning = F}
+avg_ratings_genres %>%
+  ggplot(
+    aes(
+      x = averageRating,
+      y = genres
+    )
+  ) +
+  geom_boxplot() +
+  theme_minimal()
+```
+
+Based on the side-by-side boxplots, there does look to be variation between certain genres, with horror looking to have the lowest average ratings and shorts having the highest. However, most of the genres are clustered at an average of around 6.25.
+
+## Two Sample t-tests for Differences of Means
+
+### Action vs. Comedy
+
+$H_0: \mu_{action} = \mu_{comedy}$ vs. $H_1: \mu_{action} \neq \mu_{comedy}$
+
+```{r fig.cap="action on left, comedy on right"}
+par(mfrow = c(1, 2))
+qqnorm(action_avg$averageRating)
+qqnorm(comedy_avg$averageRating)
+```
+
+We should note that neither sampling distribution is normal, especially in the case of average comedy ratings.
+
+```{r}
+action_comedy_ratings_test <- t.test(action_avg$averageRating, comedy_avg$averageRating, alternative = "two.sided")
+action_comedy_ratings_test$p.value
+```
+
+Based on the p-value and confidence interval for the two sample t-test comparing the mean ratings of action and comedy movies we see that comedy movies are rated significantly higher on average than action movies at the .05 confidence level, so we reject $H_0$.
+
+### Comedy vs. Drama
+
+$H_0: \mu_{comedy} = \mu_{drama}$ vs. $H_1: \mu_{comedy} \neq \mu_{drama}$
+
+```{r fig.cap = "comedy on left, drama on right"}
+par(mfrow = c(1, 2))
+qqnorm(comedy_avg$averageRating)
+qqnorm(drama_avg$averageRating)
+```
+
+We should note again that neither sampling distribution is normal.
+
+```{r}
+comedy_drama_ratings_test <- t.test(comedy_avg$averageRating, drama_avg$averageRating, alternative = "two.sided")
+comedy_drama_ratings_test$p.value
+```
+
+Based on the p-value and confidence interval for the two sample t-test comparing the mean ratings of comedy and drama movies we see that drama movies are rated significantly higher on average than comedy movies at the .05 confidence level, so we reject $H_0$.
+
+### Drama vs. Romance
+
+$H_0: \mu_{drama} = \mu_{romance}$ vs. $H_1: \mu_{drama} \neq \mu_{romance}$
+
+```{r fig.cap = "drama on left, romance on right"}
+par(mfrow = c(1, 2))
+qqnorm(drama_avg$averageRating)
+qqnorm(romance_avg$averageRating)
+```
+
+We should once again note that neither sampling distribution is normal.
+
+```{r}
+drama_romance_ratings_test <- t.test(drama_avg$averageRating, romance_avg$averageRating, alternative = "two.sided")
+drama_romance_ratings_test$p.value
+```
+
+Based on the p-value and confidence interval for the two sample t-test comparing the mean ratings of drama and romance movies we see that drama movies are rated significantly higher on average than romance movies at the .05 confidence level, so we once again reject $H_0$.
+
+## ANOVA Tests for Difference of Means (Groups)
+
+### Action, Comedy, Drama
+
+$H_0: \mu_{action} = \mu_{comedy} = \mu_{drama}$ vs. $H_1: \mu_i \neq \mu_j$ for some (i, j)
+
+```{r}
+acd_avg_ratings <- avg_ratings_genres %>%
+  filter(
+    genres == "Action" | genres == "Comedy" | genres == 
+      "Drama"
+  )
+aov(averageRating ~ genres, data = acd_avg_ratings) %>% summary()
+```
+
+Thus based on the p-value of this ANOVA test we reject the null hypothesis that the average ratings between action, comedy, and drama movies are equal.
+
+### War, History, Documentary
+
+$H_0: \mu_{war} = \mu_{history} = \mu_{documentary}$ vs. $H_1: \mu_i \neq \mu_j$ for some (i, j)
+
+```{r}
+whd_avg_ratings <- avg_ratings_genres %>%
+  filter(
+    genres == "War" | genres == "History" | genres == 
+      "Documentary"
+  )
+aov(averageRating ~ genres, data = acd_avg_ratings) %>% summary()
+```
+
+Again, based on the p-value of the ANOVA test we reject the null hypothesis that the average ratings between war, history, and documentary movies are equal.
+
+# Difference Between Average Ratings Within Genres Over Years?
+
+$H_0: \mu_1 = \mu_2 = ... = \mu_a$ vs. $H_1: \mu_i \neq \mu_j$ for at least one (i, j) where i and j are years of movies.
+
+```{r}
+avg_ratings_years_genres <- full_join(
+  basics,
+  ratings,
+  by = join_by(tconst == tconst)
+) %>%
+  select(
+    genres, averageRating, startYear
+  ) %>%
+  filter(
+    genres != "\\N"
+  ) %>%
+  group_by(
+    genres
+  )
+```
+
+## Film-Noir
+
+```{r}
+avg_ratings_years_filmnoir <- avg_ratings_years_genres %>%
+  filter(
+    genres == "Film-Noir"
+  )
+qqnorm(avg_ratings_years_filmnoir$averageRating)
+```
+
+The distribution of average ratings among Film-Noir movies is relatively normal based on the qqnorm plot.
+
+```{r}
+aov(averageRating ~ startYear, data = avg_ratings_years_filmnoir) %>% summary()
+```
+
+We see that for Film-Noir movies, although the p-value is not (essentially) 0, there is still a significant difference between average ratings over the years.
+
+## Drama
+
+```{r}
+avg_ratings_years_drama <- avg_ratings_years_genres %>%
+  filter(
+    genres == "Drama"
+  )
+qqnorm(avg_ratings_years_drama$averageRating)
+```
+
+The distribution of average ratings for drama movies does not appear to be normal based on the qqnorm plot.
+
+```{r}
+aov(averageRating ~ startYear, data = avg_ratings_years_drama) %>% summary()
+```
+
+For Drama movies, using the p-value of the ANOVA test, there is a significant difference in average ratings over the years.
+
+## Thriller
+
+```{r}
+avg_ratings_years_thriller <- avg_ratings_years_genres %>%
+  filter(
+    genres == "Thriller"
+  )
+qqnorm(avg_ratings_years_thriller$averageRating)
+```
+
+We see that the distribution of average ratings for thriller movies looks to be somewhat normal.
+
+```{r}
+aov(averageRating ~ startYear, data = avg_ratings_years_thriller) %>% summary()
+```
+
+For Thriller movies, using the p-value of the ANOVA test, we find that there is a significant difference in average ratings over the years.
+
+# Have movie lengths gotten longer over time?
+
+$H_0: \mu_1 = \mu_2 = ... = \mu_a$ vs. $H_1: \mu_i \neq \mu_j$ for at least one (i, j) where i and j are years of movies.
+
+```{r}
+movie_length <- full_join(
+  basics,
+  ratings,
+  by = join_by(tconst == tconst)
+) %>% 
+  filter(
+    titleType == "movie",
+    runtimeMinutes != "\\N"
+  ) %>%
+  select(
+    genres, averageRating, startYear, runtimeMinutes
+  ) %>%
+  mutate(
+    runtimeMinutes = as.numeric(runtimeMinutes)
+  )
+```
+
+```{r}
+qqnorm(movie_length$runtimeMinutes)
+```
+
+We can see that the distribution of movie lengths is non-normal.
+
+```{r fig.height = 20, fig.width = 20, warning = F}
+movie_length %>%
+  ggplot(
+    aes(
+      x = runtimeMinutes,
+      y = startYear
+    )
+  ) +
+  geom_boxplot() +
+  xlim(0, 600) +
+  theme_minimal()
+```
+
+From the looks of the side-by-side box plots, movies seem to have gotten relatively longer over time.
+
+```{r}
+aov(runtimeMinutes ~ startYear, data = movie_length) %>% summary()
+```
+
+Based on the p-value of the ANOVA test, we find that there is a significant difference in average runtime of movies over the years.
+
+# Have episode lengths gotten longer over time?
+
+$H_0: \mu_1 = \mu_2 = ... = \mu_a$ vs. $H_1: \mu_i \neq \mu_j$ for at least one (i, j) where i and j are years of tv shows.
+
+```{r}
+episode_length <- full_join(
+  basics,
+  ratings,
+  by = join_by(tconst == tconst)
+) %>% 
+  filter(
+    titleType == "tvSeries",
+    runtimeMinutes != "\\N"
+  ) %>%
+  select(
+    genres, averageRating, startYear, runtimeMinutes
+  ) %>%
+  mutate(
+    runtimeMinutes = as.numeric(runtimeMinutes)
+  )
+```
+
+```{r}
+qqnorm(episode_length$runtimeMinutes)
+```
+
+We can see that like with movies, the distribution of TV episode length is non-normal.
+
+```{r fig.height = 20, fig.width = 20, warning = F}
+episode_length %>%
+  ggplot(
+    aes(
+      x = runtimeMinutes,
+      y = startYear
+    )
+  ) +
+  xlim(0, 600) + 
+  geom_boxplot() +
+  theme_minimal()
+```
+
+We see that for much of TV shows up until the 2020s, the median episode length varied very little. But since 2020, there is a noticeable increase in episode length.
+
+```{r warning = F}
+aov(runtimeMinutes ~ startYear, data = episode_length, alternative = "") %>% summary()
+```
+
+Looking at the p-value of the ANOVA test, we see that there is a significant difference in TV show episode lengths across the years. And, from the side-by-side boxplots we can presume that this difference is due to episodes getting longer over time instead of getting shorter.
+
+# Own Question: Does there appear to be a significant difference between the number of votes across different genres of movies?
+
+```{r}
+votes <- full_join(
+  basics,
+  ratings,
+  by = join_by(tconst == tconst)
+) %>% 
+  filter(
+    genres != "\\N",
+    runtimeMinutes != "\\N",
+    titleType == "movie"
+  ) %>%
+  select(
+    genres, numVotes
+  ) %>%
+  group_by(
+    genres
+  )
+
+action_votes <- votes %>%
+  filter(
+    genres == "Action"
+  ) %>%
+  mutate(
+    numVotes = as.numeric(numVotes)
+  )
+drama_votes <- votes %>%
+  filter(
+    genres == "Drama"
+  ) %>%
+  mutate(
+    numVotes = as.numeric(numVotes)
+  )
+comedy_votes <- votes %>%
+  filter(
+    genres == "Comedy"
+  ) %>%
+  mutate(
+    numVotes = as.numeric(numVotes)
+  )
+```
+
+## Two Sample t-tests for Differences of Means
+
+### Action vs. Drama
+
+$H_0: \mu_{action} = \mu_{drama}$ vs. $H_1: \mu_{action} \neq \mu_{drama}$
+
+```{r fig.cap = "Action on left, Drama on right"}
+par(mfrow = c(1, 2))
+qqnorm(action_votes$numVotes)
+qqnorm(drama_votes$numVotes)
+```
+
+We see that neither genre's distribution of votes is normal.
+
+```{r}
+action_drama_votes_test <- t.test(action_votes$numVotes, drama_votes$numVotes, alternative = "two.sided")
+action_drama_votes_test$p.value
+action_drama_votes_test$conf.int
+```
+
+Based on the p-value of the two-sided t test for difference of means, there is a significant difference in the number of votes that action and drama movies receive. From looking at the confidence interval, action movies appear to receive more votes than drama ones.
+
+### Action vs. Comedy
+
+$H_0: \mu_{action} = \mu_{comedy}$ vs. $H_1: \mu_{action} \neq \mu_{comedy}$
+
+```{r fig.cap = "Action on left, Comedy on right"}
+par(mfrow = c(1, 2))
+qqnorm(action_votes$numVotes)
+qqnorm(comedy_votes$numVotes)
+```
+
+Here, neither genre's distribution of votes is normal.
+
+```{r}
+action_comedy_votes_test <- t.test(action_votes$numVotes, comedy_votes$numVotes, alternative = "two.sided")
+action_comedy_votes_test$p.value
+action_comedy_votes_test$conf.int
+```
+
+Based on the p-value of the two-sided t test for difference of means, there is a significant difference in the number of votes that action and comedy movies receive. From looking at the confidence interval, action movies appear to receive more votes than comedy ones.
+
+## ANOVA Tests for Difference of Means (Groups)
+
+### Talk-Show vs. Game-Show vs. News
+
+```{r}
+tgn_votes <- votes %>%
+  filter(
+    genres == "Talk-Show" | genres == "Game-Show" | genres == "News"
+  )
+aov(numVotes ~ genres, data = tgn_votes) %>% summary()
+```
+
+Based on the p-value of the ANOVA test for the difference in number of votes between talk shows, game shows, and news movies, we fail to reject the null hypothesis that the mean number of votes is equal for the three categories.
+
+### War vs. History vs. Documentary
+
+```{r}
+whd_votes <- votes %>%
+  filter(
+    genres == "War" | genres == "History" | genres == "Documentary"
+  )
+aov(numVotes ~ genres, data = whd_votes) %>% summary()
+```
+
+Based on the p-value of the ANOVA test for the difference in number of votes between war, history, and documentary movies, we reject the null hypothesis that the mean number of votes is equal for the three categories.
+
+# Code appendix
+
+```{r appendix, ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```

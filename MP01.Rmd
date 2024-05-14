@@ -1,0 +1,348 @@
+---
+title: "Mini Project 1"
+author: "Carter Kulm (carterkulm)"
+date: "04/19/2024"
+format: pdf
+fontsize: 12pt
+number-sections: TRUE
+linkcolor: purple
+geometry:
+  - margin=1in
+toc: TRUE
+---
+
+```{r setup, echo = F}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo = F}
+## optional code chunk;
+## gives shortcut for boldface colored text,
+## able to be rendered in both PDF and HTML
+
+bfcolor <- function(x, color) {
+  if (knitr::is_latex_output()) {
+    sprintf("\\textcolor{%s}{\\textbf{%s}}", color, x)
+  } else if (knitr::is_html_output()) {
+    sprintf("<span style='color: %s;'><b>%s</b></span>", color, x)
+  } else x
+}
+```
+
+```{r, message = F, warning = F, echo = F}
+library(ottr)        # for checking test cases (i.e. autograding)
+library(pander)      # for nicer-looking formatting of dataframe outputs
+library(reshape2)    # for 'melting' data frames
+library(tidyverse)   # for graphs, data wrangling, etc.
+```
+
+# Data Cleaning
+
+```{r echo = F}
+month_files <- c("~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Jan.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Feb.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Mar.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Apr.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_May.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Jun.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Jul.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Aug.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Sept.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Oct.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Nov.csv", "~/Desktop/PSTAT 100/Mini Projects/MP01/data/CA_Flights_Dec.csv")
+flights <- lapply(month_files, read.csv) %>%
+  bind_rows()
+```
+
+The observations in this dataset are individual flights going in/out of California. There are 14 variables: year (year of flight), month (month of flight), op_unique_carrier (airline), origin (airport being left), dest (destination), crs_dep_time (predicted deprature time), dep_time (actual departure time), dep_delay (departure delay), crs_arr_time (predicted arrival time), arr_time (actual arrival time), arr_delay (arrival delay), crs_elapsed_time (predicted flight duration), actual_elapsed_time (actual flight duration).
+
+```{r echo = F, results = 'hide'}
+nrow(flights)
+ncol(flights)
+```
+
+There are 1,267,353 observations and 14 variables. I can tell by using nrow() and ncol() on the datasets.
+
+```{r results = 'hide', echo = F}
+flights[rowSums(is.na(flights)) > 0, ]
+```
+
+Missing values are encoded using NA, because we found 15,015 rows with NA values using the is.na() function in conjunction with rowSums(). 
+
+```{r echo = F}
+airport_info <- read.csv("~/Desktop/PSTAT 100/Mini Projects/MP01/data/Airport_Info.csv")
+
+flights <- left_join(
+  flights,
+  airport_info,
+  by = join_by("ORIGIN" == "ARPT_ID")
+) %>%
+  rename(
+    ORIGIN_ARPT_NAME = ARPT_NAME, lat_origin = x, lon_origin = y
+  )
+flights <- left_join(
+    flights,
+    airport_info,
+    by = join_by("DEST" == "ARPT_ID")
+  ) %>%
+  rename(
+    DEST_ARPT_NAME = ARPT_NAME, lat_dest = x, lon_dest = y
+  )
+```
+
+```{r results= 'hide', echo = F}
+sapply(flights, class)
+flights['MONTH'][flights['MONTH'] == 1] <- "Jan"
+flights['MONTH'][flights['MONTH'] == 2] <- "Feb"
+flights['MONTH'][flights['MONTH'] == 3] <- "Mar"
+flights['MONTH'][flights['MONTH'] == 4] <- "Apr"
+flights['MONTH'][flights['MONTH'] == 5] <- "May"
+flights['MONTH'][flights['MONTH'] == 6] <- "Jun"
+flights['MONTH'][flights['MONTH'] == 7] <- "Jul"
+flights['MONTH'][flights['MONTH'] == 8] <- "Aug"
+flights['MONTH'][flights['MONTH'] == 9] <- "Sep"
+flights['MONTH'][flights['MONTH'] == 10] <- "Oct"
+flights['MONTH'][flights['MONTH'] == 11] <- "Nov"
+flights['MONTH'][flights['MONTH'] == 12] <- "Dec"
+```
+
+# Santa Barbara Airport
+
+```{r echo = F}
+sba_flights <- flights %>%
+  filter(
+    ORIGIN == "SBA" | DEST == "SBA"
+  )
+```
+
+## Geographic Considerations
+
+```{r echo = F, results= 'hide'}
+unique(sba_flights$ORIGIN)
+unique(sba_flights$DEST)
+```
+There are 11 airports that connect with SBA: Dallas-Fort Worth INTL, Phoenix Sky Harbor INTL, Seattle-Tacoma INTL, Los Angeles INTL, San Francisco INTL, Denver INTL, Harry Reid INTL, Metro Oakland INTL, Sacramento INTL, Portland INTL.  
+
+```{r echo = F}
+locations <- data.frame(unique(sba_flights$ORIGIN_ARPT_NAME))
+colnames(locations) <- c("name")
+locations <- left_join(
+  locations,
+  sba_flights,
+  by = join_by(name == ORIGIN_ARPT_NAME)
+) %>%
+  select(
+    name, lat_origin, lon_origin, 
+    )
+```
+
+
+
+```{r echo = F}
+states <- map_data("state")
+
+ggplot() +
+  geom_polygon(data = states,
+               aes(x = long, y = lat, group = group),
+               fill = "grey90",
+               colour = "grey50") +
+  geom_point(data = locations,
+             aes(x = lat_origin, y = lon_origin)) +
+  geom_point(data = locations %>% 
+               filter(name == "SANTA BARBARA MUNI"),
+             aes(x = lat_origin, y = lon_origin, color = "red")) +
+  coord_quickmap() +
+  theme_minimal() +
+  xlab("longitude") +
+  ylab("latitude") +
+  ggtitle("Map of Airports that connect with SBA")
+```
+This plot shows the airports that connect with the SBA. The SBA itself is highlighted in red. 
+
+## Exploring Flights
+
+```{r echo=FALSE, results='hide', fig.keep='all'}
+month_order <- c('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+sba_flights %>%
+  group_by(MONTH) %>%
+  summarise(num = n()) %>%
+  ggplot(
+    aes(x = factor(MONTH, level = month_order), y = num, group = 1)
+  ) + 
+  geom_line() +
+  geom_point() +
+  xlab("Month") +
+  ylab("Number of flights")
+  ggtitle("Number of flights that route through SBA by month")
+  theme_minimal()
+```
+The "high" season of travel to and from the SBA peaks at October, and the low season of travel is around February. 
+
+
+```{r echo = F}
+sba_flights %>%
+  mutate(
+    direction = ifelse(
+      ORIGIN_ARPT_NAME == "SANTA BARBARA MUNI", "arrived", "departed"
+    )
+  ) %>%
+  na.omit() %>%
+  group_by(MONTH, direction) %>%
+  summarise(num = n(), .groups = "drop") %>%
+  ggplot(
+    aes(x = factor(MONTH, level = month_order), y = num, group = 1)
+  ) + 
+  geom_line() +
+  geom_point() +
+  facet_wrap(vars(direction)) +
+  xlab("Month") +
+  ylab("Number of flights") +
+  ggtitle("Number of flights that route through SBA by month, faceted by arriving/departing") +
+  theme_minimal()
+```
+For the most part, the peaks and troughs stay constant between the arriving and departing flights in SBA throughout the year. 
+
+```{r echo = F}
+sba_flights %>%
+  mutate(
+    direction = ifelse(
+      ORIGIN_ARPT_NAME == "SANTA BARBARA MUNI", "arrived", "departed"
+    )
+  ) %>%
+  na.omit() %>%
+  group_by(MONTH, direction) %>%
+  summarise(num = n(), .groups = "drop") %>%
+  group_by(direction) %>%
+  ggplot(
+    aes(x = factor(MONTH, level = month_order), y = num, group = 1)
+  ) +
+  geom_line() +
+  geom_point(aes(color = direction)) +
+  xlab("Month") +
+  ylab("Number of flights") +
+  ggtitle("Number of flights that route through SBA by month", "number of flights that arrived in red, departures in blue") +
+  theme_minimal()
+```
+Based on the graph, there are few months with discrepancies in the number of arriving and departing flights, but in April, there are a notably more amount of arriving flights than departing flights. 
+
+```{r echo = F, fig.height=8, fig.width=10}
+sba_flights %>%
+  mutate(
+    direction = ifelse(
+      ORIGIN_ARPT_NAME == "SANTA BARBARA MUNI", "arrived", "departed"
+    ),
+    connecting_airport = ifelse(
+      ORIGIN == "SBA", DEST_ARPT_NAME, ORIGIN_ARPT_NAME
+    )
+  ) %>%
+  na.omit() %>%
+  ggplot(
+    aes(
+      x = connecting_airport, y = ACTUAL_ELAPSED_TIME, fill = direction
+    )
+  ) +
+  geom_boxplot(staplewidth = 1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab("Airport") +
+  ylab("Time of Flight (mins)") +
+  ggtitle("Flight times departing from/arriving to the SBA by connecting airport")
+```
+Among the different airports that connect with SBA, most have similar flight durations for when the flights arriving to and departing from the SBA. However, there do exist discrepancies between these times with the Dallas-Fort Worth and Denver airports. In both cases, the flight durations for flights departing from the SBA are considerably longer than flights arriving to the SBA. 
+
+## Investigating Delays
+
+```{r echo = F, warning = F}
+sba_flights %>%
+  group_by(OP_UNIQUE_CARRIER) %>%
+  ggplot(
+    aes(x = OP_UNIQUE_CARRIER, y = DEP_DELAY)
+  ) +
+  geom_boxplot() + 
+  ylim(-25, 25) +
+  xlab("Airlines (by code)") +
+  ylab("Departure Delay (mins)") +
+  ggtitle("Departure Delays from SBA by Airport")
+```
+On average, all airlines had flights that departed before their scheduled departure times. All of the airlines are centered at a median departure delay of about -3 minutes, though SkyWest Airlines (OO) are at the lowest delay at around -6 minutes and Southwest Airlines (WN) are at the highest delay at around -2 minutes. 
+
+```{r echo = F, warning = F}
+sba_flights %>%
+  mutate(
+    direction = ifelse(
+      ORIGIN_ARPT_NAME == "SANTA BARBARA MUNI", "arrived", "departed"
+    )
+  ) %>%
+  group_by(OP_UNIQUE_CARRIER) %>%
+  ggplot(
+    aes(x = OP_UNIQUE_CARRIER, y = DEP_DELAY, fill = direction)
+  ) +
+  geom_boxplot() +
+  ylim(-20, 15) +
+  theme_minimal() +
+  xlab("Airlines") +
+  ylab("Departure Delay (mins)") +
+  ggtitle("Departure Delays arriving to/departing from the SBA")
+```
+The medians and IQR's within each airline are very similar for the departure delays arriving to and departing from the SBA. The most noticeable gap in the median of these times is from SkyWest (OO), whose median departure delay time from the SBA is a couple minutes higher than its median departure delay time arriving to the SBA. 
+
+```{r echo = F, warning = F}
+sba_flights %>%
+  filter(ORIGIN_ARPT_NAME == "SANTA BARBARA MUNI") %>%
+  mutate(
+    connecting_airport = ifelse(
+      ORIGIN == "SBA", DEST_ARPT_NAME, ORIGIN_ARPT_NAME
+    )
+  ) %>%
+  ggplot(
+    aes(x = CRS_DEP_TIME, y = DEP_DELAY)
+  ) +
+  geom_point() +
+  facet_wrap(vars(connecting_airport)) +
+  xlim(400, 2100) +
+  ylim(-100, 500) +
+  xlab("Scheduled Departure Time (hour)") +
+  ylab("Delay of Departure (mins)") +
+  ggtitle("Length of Departure Delay vs. Scheduled Departure Time by airport")
+```
+There doesn't look to be an association between scheduled departure time and length of departure delay across the different airports connecting with the SBA. 
+
+# Branching Out
+
+```{r echo = F, warning=F}
+flights %>%
+  ggplot(
+    aes(x = DEP_TIME)
+  ) +
+  geom_histogram(binwidth = 100) +
+  xlab("Departure Times (hour)") +
+  ylab("Number of flights") +
+  ggtitle("Number of departure times of flights by hour")
+```
+Based on the histogram, it looks like departure times peak at around 8:00am, noon, and 7:00pm, while they are at their lowest between 12:00am and 4:00am. 
+
+```{r echo = F, warning = F}
+flights %>%
+  ggplot(
+    aes(x = ARR_TIME)
+  ) + 
+  geom_histogram(binwidth = 100) +
+  xlab("Arrival times (hour)") +
+  ylab("Number of flights") +
+  ggtitle("Number of arrival times of flights by hour")
+```
+Based on the histogram, arrival times peak at around noon and 8:00pm, while they are at their lowest between 1:00am and 5:00am. These peaks aligns with the most popular departure times of 8:00am and noon, assuming that flights, on average, are 4-5 hours long. The troughs in arrival times don't align as well with the troughs in departure times, because if we assume again that flights take 4-5 hours on average, there seems to be a good amount of flights arriving between the hours of 5:00am and 10:00am. 
+
+```{r echo = F}
+flights %>%
+  group_by(MONTH) %>%
+  summarise(dep_med_delay = median(DEP_DELAY, na.rm = T))
+flights %>%
+  group_by(MONTH) %>%
+  summarise(arr_med_delay = median(ARR_DELAY, na.rm = T))
+```
+Surprisingly, no month has a median departure delay of over 0 minutes, with March, June, and July all having 0. February, September, October, November, and December all having the lowest median departure delay of -2 minutes. The highest median arrival delay is -2 minutes, seen both in March and June, while the lowest median arrival delay is -8 minutes, seen in November and December. 
+
+Filtering based solely on arrival or departure airport won't give us info on all flights routing through that airport because the dataset only includes flights that have either their destination or origin in California. For example, the flight from Seattle to Newark would not be included since neither locations are in California. 
+
+
+
+# Works Cited
+[How are missing values encoded?](https://stackoverflow.com/questions/7980622/subset-of-rows-containing-na-missing-values-in-a-chosen-column-of-a-data-frame)
+\
+[How to tell what datatypes columns consist of](https://stackoverflow.com/questions/21125222/determine-the-data-types-of-a-data-frames-columns)
+\
+[Conditional Columns](https://www.statology.org/r-add-column-to-data-frame-based-on-other-columns/)
+\
+[Order x-axis](https://stackoverflow.com/questions/12774210/how-do-you-specifically-order-ggplot2-x-axis-instead-of-alphabetical-order)
